@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
+	"log"
 	"net/http"
+	"os"
+	"os/signal"
 	"strings"
 	"time"
 
@@ -27,7 +29,7 @@ func main() {
 	router.Use(middleware.Heartbeat("/health"))
 
 	router.Route("/products", func(r chi.Router) {
-		r.Use(AuthMiddleware(config))
+		r.Use(Authorization(config))
 		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 			u := r.Context().Value(userCtxKey).(*user)
 
@@ -37,20 +39,31 @@ func main() {
 		})
 	})
 
-	server := http.Server{
-		ReadTimeout:       time.Duration(10) * time.Second,
-		ReadHeaderTimeout: time.Duration(10) * time.Second,
+	server := &http.Server{
+		ReadTimeout:       time.Duration(60) * time.Second,
+		ReadHeaderTimeout: time.Duration(60) * time.Second,
 		Handler:           router,
+		Addr:              fmt.Sprintf(":%s", config.HttpServerPort),
 	}
 
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%s", config.HttpServerPort))
-	if err != nil {
-		panic(err)
+	connectionsClosed := make(chan struct{})
+	go func() {
+		sigint := make(chan os.Signal, 1)
+		signal.Notify(sigint, os.Interrupt)
+		<-sigint
+		if err := server.Shutdown(context.Background()); err != nil {
+			log.Printf("HTTP Server Shutdown Error: %v", err)
+		}
+		close(connectionsClosed)
+	}()
+
+	if err := server.ListenAndServe(); err != http.ErrServerClosed {
+		log.Fatalf("HTTP server ListenAndServe Error: %v", err)
 	}
-	server.Serve(listener)
+	<-connectionsClosed
 }
 
-func AuthMiddleware(config *configs.Config) func(http.Handler) http.Handler {
+func Authorization(config *configs.Config) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			secretKey := "-----BEGIN CERTIFICATE-----\n" + config.KeycloakPublicKey + "\n-----END CERTIFICATE-----"
@@ -72,8 +85,6 @@ func AuthMiddleware(config *configs.Config) func(http.Handler) http.Handler {
 				}
 				return key, nil
 			})
-
-			fmt.Println(token.Valid)
 
 			if err != nil {
 				w.WriteHeader(http.StatusUnauthorized)
