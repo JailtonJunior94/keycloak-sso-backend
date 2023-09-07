@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/jailtonjunior94/keycloak-sso-backend/pkg/bundle"
@@ -33,19 +34,31 @@ func main() {
 		Addr:              fmt.Sprintf(":%s", container.Config.HttpServerPort),
 	}
 
-	connectionsClosed := make(chan struct{})
-	go func() {
-		sigint := make(chan os.Signal, 1)
-		signal.Notify(sigint, os.Interrupt)
-		<-sigint
-		if err := server.Shutdown(context.Background()); err != nil {
-			log.Printf("HTTP Server Shutdown Error: %v", err)
-		}
-		close(connectionsClosed)
-	}()
+	idleConnectionsClosed := make(chan struct{})
+	go gracefulShutdown(server, idleConnectionsClosed)
 
 	if err := server.ListenAndServe(); err != http.ErrServerClosed {
 		log.Fatalf("HTTP server ListenAndServe Error: %v", err)
 	}
-	<-connectionsClosed
+	log.Printf("🚀 API is running")
+	<-idleConnectionsClosed
+}
+
+func gracefulShutdown(server *http.Server, idleConnectionsClosed chan struct{}) {
+	sigint := make(chan os.Signal, 1)
+	signal.Notify(sigint, os.Interrupt)
+	signal.Notify(sigint, syscall.SIGTERM)
+	<-sigint
+
+	log.Println("service interrupt received")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	if err := server.Shutdown(ctx); err != nil {
+		log.Printf("HTTP Server Shutdown Error: %v", err)
+	}
+
+	log.Println("shutdown complete")
+	close(idleConnectionsClosed)
 }

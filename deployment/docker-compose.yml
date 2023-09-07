@@ -1,0 +1,14 @@
+version: "3"
+
+services:
+  api:
+    container_name: api
+    image: api
+    build:
+      context: ..
+      dockerfile: cmd/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - KEYCLOAK_PUBLIC_KEY=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoY/YPrk6X613kF3AG6saq5XavH5L4rNhaGM0mBA2UGVs4eK6grYgRO9GhG4PBo4GP/BGInHwGk/jxGPOVPYjfV3h/N7g3zv1zXCK/aJ842PfflG6Dpx3Ymfu634d6/Lx4OnP0nZ9bVK+AUDNJxjd6682XFYjpLTmKLZTAR1sNMgMrsCwwXkHSWTQuO6u+HJuSH5HJM3wj5nZgOm86zwX5J4DofHbY+YiEz3S8wnV4jgCXopkAptwEg8vV1gQ7p4PcejTdeSqnNC5yI2vNzH45ocD7bYM6G+/eTDRBR45PMkCe/qsTyf+tzWiW7czaRR5HNYtQOj2Ky/Z6VrjDg996QIDAQAB
+      - HTTP_SERVER_PORT=8000
